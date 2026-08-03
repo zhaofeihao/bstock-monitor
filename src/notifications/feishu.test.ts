@@ -13,6 +13,7 @@ const opportunity: Opportunity = {
   detectedAt: Date.parse('2026-08-03T14:00:00.000Z'),
   assetCode: 'TSLAB',
   underlyingTicker: 'TSLA',
+  tokenAddress: '0x0000000000000000000000000000000000000002',
   direction: 'CEX_BUY_DEX_SELL',
   cexSymbol: 'TSLABUSDT',
   poolAddress: '0x0000000000000000000000000000000000000001',
@@ -58,6 +59,9 @@ test('builds a signed interactive arbitrage card', () => {
   assert.match(payload.card.header.title.content, /TSLAB/);
   assert.match(JSON.stringify(payload.card.elements), /<at id=all><\/at>/);
   assert.match(JSON.stringify(payload.card.elements), /5\.08/);
+  assert.match(JSON.stringify(payload.card.elements), /bStock Token CA/);
+  assert.match(JSON.stringify(payload.card.elements), /0000000000000000000000000000000000000002/);
+  assert.match(JSON.stringify(payload.card.elements), /dexscreener\.com\/bsc/);
 });
 
 test('validates the application-level Feishu webhook response code', async () => {

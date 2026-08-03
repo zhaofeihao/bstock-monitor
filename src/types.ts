@@ -90,6 +90,7 @@ export interface Opportunity {
   detectedAt: number;
   assetCode: string;
   underlyingTicker: string;
+  tokenAddress: string;
   direction: OpportunityDirection;
   cexSymbol: string;
   poolAddress: string;

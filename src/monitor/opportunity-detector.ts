@@ -341,6 +341,7 @@ export class OpportunityDetector {
       detectedAt: Date.now(),
       assetCode: input.asset.assetCode,
       underlyingTicker: input.asset.underlyingTicker,
+      tokenAddress: input.asset.address,
       direction: input.direction,
       cexSymbol: input.asset.cexSymbol,
       poolAddress: input.poolAddress,

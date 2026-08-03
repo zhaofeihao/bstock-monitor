@@ -103,7 +103,11 @@ export function buildFeishuOpportunityPayload(
       tag: 'div',
       text: {
         tag: 'lark_md',
-        content: `**交易对** ${opportunity.cexSymbol}\n**Pancake Pool** ${opportunity.poolAddress}`,
+        content: [
+          `**交易对** ${opportunity.cexSymbol}`,
+          `**bStock Token CA**\n\`${opportunity.tokenAddress}\``,
+          `**Pancake V3 Pool CA**\n\`${opportunity.poolAddress}\``,
+        ].join('\n'),
       },
     },
   ];
@@ -129,7 +133,18 @@ export function buildFeishuOpportunityPayload(
         },
         {
           tag: 'button',
-          text: { tag: 'plain_text', content: '查看链上池' },
+          text: { tag: 'plain_text', content: '查看池行情' },
+          type: 'primary',
+          url: `https://dexscreener.com/bsc/${encodeURIComponent(opportunity.poolAddress)}`,
+        },
+        {
+          tag: 'button',
+          text: { tag: 'plain_text', content: 'Token 合约' },
+          url: `https://bscscan.com/token/${encodeURIComponent(opportunity.tokenAddress)}`,
+        },
+        {
+          tag: 'button',
+          text: { tag: 'plain_text', content: 'Pool 合约' },
           url: `https://bscscan.com/address/${encodeURIComponent(opportunity.poolAddress)}`,
         },
       ],

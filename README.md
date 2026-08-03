@@ -166,9 +166,17 @@ npm run check:feishu
 npm run pm2:reload
 ```
 
-只有同时达到 `MIN_PROFIT_USD`、`ALERT_THRESHOLD_BPS` 且通过 `ALERT_COOLDOWN_MS` 去重的信号才会通知。卡片包含套利方向、两边成交均价、净利润、收益率、池地址、报价耗时和 Binance/BscScan 快捷入口。通用 `WEBHOOK_URL` 与飞书可以同时配置。
+只有同时达到 `MIN_PROFIT_USD`、`ALERT_THRESHOLD_BPS` 且通过 `ALERT_COOLDOWN_MS` 去重的信号才会通知。卡片包含套利方向、两边成交均价、净利润、收益率、报价耗时，并明确区分 bStock Token CA 与 Pancake V3 Pool CA。快捷入口可打开 Binance、DexScreener 池行情，以及 BscScan 上的 Token/Pool 合约。通用 `WEBHOOK_URL` 与飞书可以同时配置。
 
 实现支持飞书签名校验，并按官方限制控制在每机器人 5 次/秒、100 次/分钟；11232、HTTP 429/5xx 和短暂网络故障会有限重试。请求体保持远低于 20 KB。详见[飞书自定义机器人使用指南](https://open.feishu.cn/document/ukTMukTMukTM/ucTM5YjL3ETO24yNxkjN?lang=zh-CN)。
+
+### 为什么在 Pancake 搜不到
+
+Token CA 是 bStock ERC-20 合约，Pool CA 是某个 bStock/USDT、特定费率档位的 Pancake V3 池合约，两者不是同一个地址。Pancake 的代币搜索主要依赖默认 Token List；未收录的 bStock 通常无法按股票 ticker 搜到，也不能把 Pool CA 当作 Token CA 搜索。
+
+- 看实时价格、K 线、成交量和流动性：点击飞书卡片的“查看池行情”，按 Pool CA 打开 DexScreener。
+- 核对代币：点击“Token 合约”，或在 BscScan 使用 Token CA。
+- 在 Pancake 交易：切换到 BNB Chain，并按 Token CA 手动导入 bStock；另一侧选择 BSC USDT。不要导入 Pool CA。
 
 ## HTTP 与 Prometheus
 
