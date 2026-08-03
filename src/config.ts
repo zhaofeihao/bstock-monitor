@@ -21,6 +21,8 @@ const schema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   HTTP_HOST: z.string().default('127.0.0.1'),
   HTTP_PORT: positiveInt(8787),
+  DASHBOARD_LOGS_ENABLED: booleanString(true),
+  DASHBOARD_LOG_DIR: z.string().default('./logs'),
 
   BSTOCK_ASSET_URL: z
     .url()
@@ -109,6 +111,8 @@ export interface AppConfig {
   logLevel: string;
   httpHost: string;
   httpPort: number;
+  dashboardLogsEnabled: boolean;
+  dashboardLogDir: string;
   bstockAssetUrl: string;
   binanceRestUrl: string;
   binanceWsUrl: string;
@@ -159,6 +163,8 @@ export const config: AppConfig = {
   logLevel: parsed.LOG_LEVEL,
   httpHost: parsed.HTTP_HOST,
   httpPort: parsed.HTTP_PORT,
+  dashboardLogsEnabled: parsed.DASHBOARD_LOGS_ENABLED,
+  dashboardLogDir: path.resolve(parsed.DASHBOARD_LOG_DIR),
   bstockAssetUrl: parsed.BSTOCK_ASSET_URL,
   binanceRestUrl: parsed.BINANCE_REST_URL.replace(/\/$/, ''),
   binanceWsUrl: parsed.BINANCE_WS_URL.replace(/\/$/, ''),

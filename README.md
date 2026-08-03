@@ -183,18 +183,37 @@ Token CA 是 bStock ERC-20 合约，Pool CA 是某个 bStock/USDT、特定费率
 默认只监听 `127.0.0.1:8787`：
 
 ```bash
+open http://127.0.0.1:8787/
 curl http://127.0.0.1:8787/health
+curl http://127.0.0.1:8787/v1/dashboard
 curl http://127.0.0.1:8787/v1/assets
 curl http://127.0.0.1:8787/v1/markets
 curl 'http://127.0.0.1:8787/v1/opportunities?source=history&limit=100'
+curl 'http://127.0.0.1:8787/v1/logs?limit=100'
 curl http://127.0.0.1:8787/metrics
 ```
 
+- `/`：同进程托管的只读监控台，不需要额外的前端服务器或运行时。
 - `/health`：CEX WebSocket、DEX block、池数量、SQLite 统计。
+- `/v1/dashboard`：为前端合并健康状态、市场快照和最新机会，减少轮询请求数。
 - `/v1/assets`：Binance ticker、CA、已验证池和充值提现状态。
 - `/v1/markets`：当前 CEX bid/ask 与 DEX 边际买卖价。
 - `/v1/opportunities`：内存中的最新结果；加 `source=history` 查询 SQLite。
+- `/v1/logs`：按 PM2 文件字节游标读取有限的增量日志；不会返回完整日志文件。
 - `/metrics`：可供 Prometheus 抓取的基础指标。
+
+### 监控台的流量控制
+
+监控台默认在可见标签页中每 2 秒读取一次合并状态；开启“节流模式”后改为 5 秒。标签页进入后台后自动降为 30 秒，历史机会低频读取。静态文件带 ETag 和浏览器缓存，超过 1 KB 的响应在浏览器支持时使用 gzip。
+
+日志面板默认折叠，只有展开时才读取 `logs/out.log` 和 `logs/error.log` 的尾部；后续请求携带两个文件的字节游标，只传新增内容。单次读取最多 128 KiB/文件，前端最多保留 400 行。可用以下配置关闭日志查看或调整 PM2 日志目录：
+
+```dotenv
+DASHBOARD_LOGS_ENABLED=true
+DASHBOARD_LOG_DIR=./logs
+```
+
+HTTP 服务仍默认只绑定回环地址。需要从公网访问时，应保持 `HTTP_HOST=127.0.0.1`，使用 Caddy/Nginx 反向代理并在代理层配置 HTTPS、身份认证和限流；不要直接把 `8787` 端口暴露到公网。
 
 ## SQLite
 

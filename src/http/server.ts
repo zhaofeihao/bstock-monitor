@@ -1,9 +1,22 @@
+import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
+import path from 'node:path';
+import { gzipSync } from 'node:zlib';
 
 import type { AppConfig } from '../config.js';
 import type { Logger } from '../logger.js';
-import type { AssetDefinition, MarketSnapshot, Opportunity, ServiceHealth, TransferStatus, V3PoolDescriptor } from '../types.js';
 import { MonitorDatabase } from '../storage/database.js';
+import type {
+  AssetDefinition,
+  MarketSnapshot,
+  Opportunity,
+  ServiceHealth,
+  TransferStatus,
+  V3PoolDescriptor,
+} from '../types.js';
+import { errorMessage } from '../utils.js';
+import { DashboardLogTail, type DashboardLogCursor } from './log-tail.js';
 
 export interface HttpStateProvider {
   health(): ServiceHealth;
@@ -14,30 +27,50 @@ export interface HttpStateProvider {
   transferStatuses(): TransferStatus[];
 }
 
-function json(response: ServerResponse, status: number, payload: unknown): void {
-  const body = JSON.stringify(payload);
-  response.writeHead(status, {
-    'content-type': 'application/json; charset=utf-8',
-    'content-length': Buffer.byteLength(body),
-    'cache-control': 'no-store',
-    'x-content-type-options': 'nosniff',
-  });
-  response.end(body);
+interface StaticAsset {
+  body: Buffer;
+  contentType: string;
+  etag: string;
 }
+
+const STATIC_FILES: Record<string, { filename: string; contentType: string }> = {
+  '/': { filename: 'index.html', contentType: 'text/html; charset=utf-8' },
+  '/dashboard.css': { filename: 'dashboard.css', contentType: 'text/css; charset=utf-8' },
+  '/dashboard.js': { filename: 'dashboard.js', contentType: 'text/javascript; charset=utf-8' },
+  '/favicon.svg': { filename: 'favicon.svg', contentType: 'image/svg+xml' },
+};
+
+const SECURITY_HEADERS = {
+  'x-content-type-options': 'nosniff',
+  'x-frame-options': 'DENY',
+  'referrer-policy': 'no-referrer',
+  'permissions-policy': 'camera=(), microphone=(), geolocation=()',
+};
 
 export class MonitorHttpServer {
   private server: http.Server | null = null;
+  private readonly dashboardDirectory = path.resolve('public/dashboard');
+  private readonly staticAssets = new Map<string, StaticAsset>();
+  private readonly logTail: DashboardLogTail;
 
   constructor(
     private readonly config: AppConfig,
     private readonly logger: Logger,
     private readonly state: HttpStateProvider,
     private readonly database: MonitorDatabase,
-  ) {}
+  ) {
+    this.logTail = new DashboardLogTail(config.dashboardLogDir);
+  }
 
   async start(): Promise<void> {
     if (this.server) return;
-    this.server = http.createServer((request, response) => this.route(request, response));
+    this.server = http.createServer((request, response) => {
+      void this.route(request, response).catch((error) => {
+        this.logger.warn({ error: errorMessage(error), path: request.url }, 'Dashboard request failed');
+        if (!response.headersSent) json(request, response, 500, { error: 'internal_error' });
+        else response.end();
+      });
+    });
     await new Promise<void>((resolve, reject) => {
       this.server!.once('error', reject);
       this.server!.listen(this.config.httpPort, this.config.httpHost, () => {
@@ -47,7 +80,7 @@ export class MonitorHttpServer {
     });
     this.logger.info(
       { url: `http://${this.config.httpHost}:${this.config.httpPort}` },
-      'Monitor HTTP status server started',
+      'Monitor dashboard and HTTP status server started',
     );
   }
 
@@ -58,28 +91,57 @@ export class MonitorHttpServer {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   }
 
-  private route(request: IncomingMessage, response: ServerResponse): void {
-    if (request.method !== 'GET') {
-      json(response, 405, { error: 'method_not_allowed' });
+  private async route(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      json(request, response, 405, { error: 'method_not_allowed' });
       return;
     }
     const url = new URL(request.url ?? '/', 'http://localhost');
 
-    if (url.pathname === '/') {
-      json(response, 200, {
+    if (url.pathname in STATIC_FILES) {
+      await this.staticAsset(request, response, url.pathname);
+      return;
+    }
+
+    if (url.pathname === '/api') {
+      json(request, response, 200, {
         service: 'bstock-monitor',
-        endpoints: ['/health', '/v1/assets', '/v1/markets', '/v1/opportunities', '/metrics'],
+        dashboard: '/',
+        endpoints: [
+          '/health',
+          '/v1/dashboard',
+          '/v1/assets',
+          '/v1/markets',
+          '/v1/opportunities',
+          '/v1/logs',
+          '/metrics',
+        ],
       });
       return;
     }
 
     if (url.pathname === '/health') {
-      const health = this.state.health();
-      const dexFresh =
-        health.dexLastPollAt !== null && Date.now() - health.dexLastPollAt <= this.config.maxPriceAgeMs * 2;
-      const healthy =
-        health.cexConnected && dexFresh && health.assets > 0 && health.pools > 0 && health.activeMarkets > 0;
-      json(response, healthy ? 200 : 503, { status: healthy ? 'ok' : 'degraded', ...health, database: this.database.stats() });
+      const payload = this.healthPayload();
+      json(request, response, payload.status === 'ok' ? 200 : 503, payload);
+      return;
+    }
+
+    if (url.pathname === '/v1/dashboard') {
+      const health = this.healthPayload();
+      json(request, response, 200, {
+        serverTime: Date.now(),
+        ...health,
+        monitor: {
+          notionalUsd: this.config.notionalUsd,
+          alertThresholdBps: this.config.alertThresholdBps,
+          prequoteThresholdBps: this.config.prequoteThresholdBps,
+          maxPriceAgeMs: this.config.maxPriceAgeMs,
+          settlementMode: this.config.settlementMode,
+          logsEnabled: this.config.dashboardLogsEnabled,
+        },
+        markets: this.state.markets(),
+        latestOpportunities: this.state.latestOpportunities(),
+      });
       return;
     }
 
@@ -92,6 +154,7 @@ export class MonitorHttpServer {
       }
       const transfers = new Map(this.state.transferStatuses().map((status) => [status.assetCode, status]));
       json(
+        request,
         response,
         200,
         this.state.assets().map((asset) => ({
@@ -104,7 +167,7 @@ export class MonitorHttpServer {
     }
 
     if (url.pathname === '/v1/markets') {
-      json(response, 200, this.state.markets());
+      json(request, response, 200, this.state.markets());
       return;
     }
 
@@ -112,6 +175,7 @@ export class MonitorHttpServer {
       const limit = Number(url.searchParams.get('limit') ?? '100');
       const source = url.searchParams.get('source') ?? 'latest';
       json(
+        request,
         response,
         200,
         source === 'history'
@@ -121,15 +185,80 @@ export class MonitorHttpServer {
       return;
     }
 
-    if (url.pathname === '/metrics') {
-      this.metrics(response);
+    if (url.pathname === '/v1/logs') {
+      if (!this.config.dashboardLogsEnabled) {
+        json(request, response, 404, { error: 'logs_disabled' });
+        return;
+      }
+      const cursor: Partial<DashboardLogCursor> = {};
+      const stdout = parseNonNegativeInteger(url.searchParams.get('stdout'));
+      const stderr = parseNonNegativeInteger(url.searchParams.get('stderr'));
+      if (stdout !== null) cursor.stdout = stdout;
+      if (stderr !== null) cursor.stderr = stderr;
+      const limit = Number(url.searchParams.get('limit') ?? '120');
+      json(request, response, 200, await this.logTail.read(cursor, limit));
       return;
     }
 
-    json(response, 404, { error: 'not_found' });
+    if (url.pathname === '/metrics') {
+      this.metrics(request, response);
+      return;
+    }
+
+    json(request, response, 404, { error: 'not_found' });
   }
 
-  private metrics(response: ServerResponse): void {
+  private healthPayload() {
+    const health = this.state.health();
+    const dexFresh =
+      health.dexLastPollAt !== null && Date.now() - health.dexLastPollAt <= this.config.maxPriceAgeMs * 2;
+    const healthy =
+      health.cexConnected && dexFresh && health.assets > 0 && health.pools > 0 && health.activeMarkets > 0;
+    return {
+      status: healthy ? ('ok' as const) : ('degraded' as const),
+      ...health,
+      database: this.database.stats(),
+    };
+  }
+
+  private async staticAsset(
+    request: IncomingMessage,
+    response: ServerResponse,
+    pathname: string,
+  ): Promise<void> {
+    const descriptor = STATIC_FILES[pathname];
+    if (!descriptor) {
+      json(request, response, 404, { error: 'not_found' });
+      return;
+    }
+    let asset = this.staticAssets.get(pathname);
+    if (!asset) {
+      const body = await readFile(path.join(this.dashboardDirectory, descriptor.filename));
+      asset = {
+        body,
+        contentType: descriptor.contentType,
+        etag: `W/"${createHash('sha256').update(body).digest('base64url').slice(0, 16)}"`,
+      };
+      this.staticAssets.set(pathname, asset);
+    }
+    if (request.headers['if-none-match'] === asset.etag) {
+      response.writeHead(304, {
+        ...SECURITY_HEADERS,
+        etag: asset.etag,
+        'cache-control': staticCacheControl(pathname),
+      });
+      response.end();
+      return;
+    }
+    sendBody(request, response, 200, asset.body, asset.contentType, {
+      etag: asset.etag,
+      'cache-control': staticCacheControl(pathname),
+      'content-security-policy':
+        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+    });
+  }
+
+  private metrics(request: IncomingMessage, response: ServerResponse): void {
     const health = this.state.health();
     const database = this.database.stats();
     const lines = [
@@ -156,12 +285,52 @@ export class MonitorHttpServer {
       `bstock_monitor_opportunities_total ${database.opportunities}`,
       '',
     ];
-    const body = lines.join('\n');
-    response.writeHead(200, {
-      'content-type': 'text/plain; version=0.0.4; charset=utf-8',
-      'content-length': Buffer.byteLength(body),
-      'cache-control': 'no-store',
-    });
-    response.end(body);
+    sendBody(
+      request,
+      response,
+      200,
+      Buffer.from(lines.join('\n')),
+      'text/plain; version=0.0.4; charset=utf-8',
+      { 'cache-control': 'no-store' },
+    );
   }
+}
+
+function json(request: IncomingMessage, response: ServerResponse, status: number, payload: unknown): void {
+  sendBody(request, response, status, Buffer.from(JSON.stringify(payload)), 'application/json; charset=utf-8', {
+    'cache-control': 'no-store',
+  });
+}
+
+function sendBody(
+  request: IncomingMessage,
+  response: ServerResponse,
+  status: number,
+  body: Buffer,
+  contentType: string,
+  headers: Record<string, string>,
+): void {
+  const shouldCompress = body.byteLength >= 1024 && request.headers['accept-encoding']?.includes('gzip');
+  const encoded = shouldCompress ? gzipSync(body, { level: 4 }) : body;
+  response.writeHead(status, {
+    ...SECURITY_HEADERS,
+    ...headers,
+    'content-type': contentType,
+    'content-length': encoded.byteLength,
+    ...(shouldCompress ? { 'content-encoding': 'gzip', vary: 'accept-encoding' } : {}),
+  });
+  if (request.method === 'HEAD') response.end();
+  else response.end(encoded);
+}
+
+function parseNonNegativeInteger(value: string | null): number | null {
+  if (value === null || !/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+function staticCacheControl(pathname: string): string {
+  return pathname === '/'
+    ? 'public, max-age=0, must-revalidate'
+    : 'public, max-age=86400, immutable';
 }

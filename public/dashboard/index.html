@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#101512">
+    <title>bStock 市场观测台</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/dashboard.css?v=20260803-1">
+    <script src="/dashboard.js?v=20260803-1" defer></script>
+  </head>
+  <body>
+    <div class="atmosphere" aria-hidden="true"></div>
+    <header class="masthead">
+      <a class="brand" href="/" aria-label="bStock 市场观测台首页">
+        <span class="brand-mark">B<span>/</span>S</span>
+        <span class="brand-copy">
+          <strong>bStock Observatory</strong>
+          <small>Cross-venue monitor · BNB Chain</small>
+        </span>
+      </a>
+      <div class="header-actions">
+        <button id="data-mode" class="mode-button" type="button" aria-pressed="false">
+          <span class="mode-icon" aria-hidden="true"></span>
+          <span id="data-mode-label">智能流量</span>
+        </button>
+        <div id="connection-pill" class="connection-pill is-loading" role="status" aria-live="polite">
+          <span class="status-orbit" aria-hidden="true"></span>
+          <span id="connection-label">正在连接</span>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="page-title">
+        <div class="hero-copy reveal reveal-1">
+          <p class="eyebrow">Live market intelligence / 01</p>
+          <h1 id="page-title">两条市场，<br><em>一个清晰信号。</em></h1>
+          <p class="hero-description">
+            持续对照 Binance 订单簿与 PancakeSwap V3 链上报价，过滤噪声，只呈现可执行性、时效与成本之后的真实窗口。
+          </p>
+        </div>
+
+        <article id="system-card" class="system-card reveal reveal-2 is-loading" aria-labelledby="system-title">
+          <div class="system-card-top">
+            <div>
+              <p class="panel-kicker">System posture</p>
+              <h2 id="system-title">系统正在校准</h2>
+            </div>
+            <div class="health-dial" aria-hidden="true">
+              <span id="health-score">—</span>
+            </div>
+          </div>
+          <p id="system-summary" class="system-summary">正在获取交易所连接、链上区块和市场新鲜度。</p>
+          <div class="system-footer">
+            <span>最后同步</span>
+            <strong id="last-sync">—</strong>
+          </div>
+        </article>
+      </section>
+
+      <section class="metric-rail reveal reveal-3" aria-label="核心运行指标">
+        <article class="metric-cell">
+          <span class="metric-index">01</span>
+          <p>活跃市场</p>
+          <strong id="metric-markets">—</strong>
+          <small id="metric-markets-note">等待市场目录</small>
+        </article>
+        <article class="metric-cell">
+          <span class="metric-index">02</span>
+          <p>验证池</p>
+          <strong id="metric-pools">—</strong>
+          <small>Pancake V3 direct pools</small>
+        </article>
+        <article class="metric-cell">
+          <span class="metric-index">03</span>
+          <p>链上区块</p>
+          <strong id="metric-block">—</strong>
+          <small id="metric-dex-age">等待首次轮询</small>
+        </article>
+        <article class="metric-cell metric-cell-accent">
+          <span class="metric-index">04</span>
+          <p>最强边际价差</p>
+          <strong id="metric-spread">—</strong>
+          <small id="metric-spread-asset">暂无有效市场</small>
+        </article>
+      </section>
+
+      <section class="market-section reveal reveal-4" aria-labelledby="markets-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Market matrix / 02</p>
+            <h2 id="markets-title">跨场所行情矩阵</h2>
+          </div>
+          <div class="table-tools">
+            <label class="search-box">
+              <span class="visually-hidden">筛选资产</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.3-4.3m2.3-5.2a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z"/></svg>
+              <input id="market-search" type="search" placeholder="筛选代码" autocomplete="off">
+            </label>
+            <span id="market-count" class="count-label">0 markets</span>
+          </div>
+        </div>
+
+        <div class="market-table-wrap">
+          <table class="market-table">
+            <thead>
+              <tr>
+                <th>资产</th>
+                <th>Binance bid / ask</th>
+                <th>Pancake mid</th>
+                <th>CEX 买 → DEX 卖</th>
+                <th>DEX 买 → CEX 卖</th>
+                <th>数据年龄</th>
+              </tr>
+            </thead>
+            <tbody id="market-rows">
+              <tr class="empty-row"><td colspan="6">正在读取市场快照…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="market-cards" class="market-cards" aria-live="polite"></div>
+      </section>
+
+      <section class="lower-grid">
+        <article class="opportunity-panel reveal reveal-5" aria-labelledby="opportunities-title">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">Verified signals / 03</p>
+              <h2 id="opportunities-title">精确报价记录</h2>
+            </div>
+            <span id="opportunity-count" class="count-label">0 signals</span>
+          </div>
+          <div id="opportunity-list" class="opportunity-list">
+            <div class="quiet-state">
+              <span class="quiet-pulse" aria-hidden="true"></span>
+              <p>监听中，暂无达到最低利润的精确报价。</p>
+            </div>
+          </div>
+        </article>
+
+        <aside class="infrastructure-panel reveal reveal-6" aria-labelledby="infrastructure-title">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">Infrastructure / 04</p>
+              <h2 id="infrastructure-title">运行剖面</h2>
+            </div>
+          </div>
+          <dl class="infra-list">
+            <div><dt>Binance WebSocket</dt><dd id="infra-cex">—</dd></div>
+            <div><dt>DEX poll age</dt><dd id="infra-dex">—</dd></div>
+            <div><dt>Exact quotes</dt><dd id="infra-quotes">—</dd></div>
+            <div><dt>SQLite snapshots</dt><dd id="infra-snapshots">—</dd></div>
+            <div><dt>Database size</dt><dd id="infra-db-size">—</dd></div>
+            <div><dt>Service uptime</dt><dd id="infra-uptime">—</dd></div>
+          </dl>
+          <div class="cost-note">
+            <span>Traffic discipline</span>
+            <p>页面隐藏时自动降频；日志仅传输新增内容。</p>
+            <strong id="session-transfer">本次会话 ≈ 0 KB</strong>
+          </div>
+        </aside>
+      </section>
+
+      <details id="log-panel" class="log-panel reveal reveal-6">
+        <summary>
+          <span>
+            <span class="eyebrow">Incremental log tail / 05</span>
+            <strong>运行日志</strong>
+          </span>
+          <span class="summary-meta"><span id="log-state">按需加载</span><i aria-hidden="true"></i></span>
+        </summary>
+        <div class="log-toolbar">
+          <div class="log-filters" role="group" aria-label="日志级别筛选">
+            <button class="log-filter is-active" type="button" data-level="all">全部</button>
+            <button class="log-filter" type="button" data-level="info">Info</button>
+            <button class="log-filter" type="button" data-level="warn">Warn</button>
+            <button class="log-filter" type="button" data-level="error">Error</button>
+          </div>
+          <div class="log-actions">
+            <button id="log-pause" type="button">暂停</button>
+            <button id="log-clear" type="button">清屏</button>
+          </div>
+        </div>
+        <div id="log-output" class="log-output" role="log" aria-live="off" aria-label="服务运行日志">
+          <div class="log-empty">展开后仅加载日志尾部，不会下载完整文件。</div>
+        </div>
+      </details>
+    </main>
+
+    <footer>
+      <span>bStock Observatory · read-only monitor</span>
+      <span id="footer-config">等待服务配置</span>
+    </footer>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>
